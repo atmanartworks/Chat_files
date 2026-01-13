@@ -56,8 +56,15 @@ app = FastAPI(title="Chat with Files API")
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
-    init_db()
-    print("Database connected and initialized!")
+    try:
+        init_db()
+        print("Database connected and initialized!")
+    except Exception as e:
+        print(f"Warning: Database initialization error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Continue anyway - app can still start
+    
     # Load vectorstores from Qdrant Cloud
     try:
         from .vectorstore import load_vectorstore
@@ -139,6 +146,16 @@ sys.modules[__name__].VECTORSTORE = None
 # Ensure uploads directory exists
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("generated_pdfs", exist_ok=True)
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for deployment verification."""
+    return {
+        "status": "ok",
+        "message": "FounderGPT API is running",
+        "service": "backend"
+    }
 
 class ChatRequest(BaseModel):
     query: str
