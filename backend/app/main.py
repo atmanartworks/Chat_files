@@ -57,30 +57,30 @@ app = FastAPI(title="FounderGPT API", version="1.0.0")
 @app.on_event("startup")
 async def startup_event():
     """Startup event - minimal and fast for immediate port binding."""
-    print("=" * 50)
-    print("FounderGPT API Starting...")
-    print("=" * 50)
-    
-    # Database initialization - quick, don't block on errors
-    # Make it truly non-blocking
     try:
-        # Run init_db in a way that doesn't block
-        init_db()
-        print("Database connected and initialized!")
+        print("=" * 50)
+        print("FounderGPT API Starting...")
+        print("=" * 50)
+        
+        # SKIP database initialization during startup - it will be done on first request
+        # This ensures immediate port binding
+        print("Database will be initialized on first request")
+        
+        # SKIP all heavy operations during startup
+        # Vectorstores will be loaded on-demand when needed
+        print("=" * 50)
+        print("FounderGPT API Ready - Port binding immediately")
+        print("Database and vectorstores will be initialized on-demand")
+        print("=" * 50)
+        
+        # Force flush to ensure messages are printed
+        import sys
+        sys.stdout.flush()
     except Exception as e:
-        print(f"Warning: Database initialization error: {e}")
-        # Continue anyway - app can still start
-    
-    # SKIP all heavy operations during startup
-    # Vectorstores will be loaded on-demand when needed
-    print("=" * 50)
-    print("FounderGPT API Ready - Port binding immediately")
-    print("Vectorstores will be loaded on-demand when needed")
-    print("=" * 50)
-    
-    # Force flush to ensure messages are printed
-    import sys
-    sys.stdout.flush()
+        # Even if startup fails, don't crash - just log and continue
+        print(f"Warning: Startup event error (non-critical): {e}")
+        import sys
+        sys.stdout.flush()
 
 # Add CORS middleware - Allow all localhost origins for development and production
 # Update allow_origins with your frontend URL after deployment
@@ -110,14 +110,23 @@ CURRENT_DOCUMENT = None  # Track current uploaded document
 import sys
 sys.modules[__name__].VECTORSTORE = None
 
-# Ensure uploads directory exists
-os.makedirs("uploads", exist_ok=True)
-os.makedirs("generated_pdfs", exist_ok=True)
+# Ensure uploads directory exists (non-blocking, won't fail if can't create)
+try:
+    os.makedirs("uploads", exist_ok=True)
+    os.makedirs("generated_pdfs", exist_ok=True)
+except Exception:
+    pass  # Non-critical, continue anyway
 
 # Root endpoint - simple test
 @app.get("/")
 async def root():
     """Root endpoint to verify app is running."""
+    # Lazy database initialization (non-blocking)
+    try:
+        ensure_db_initialized()
+    except Exception:
+        pass  # Continue even if DB init fails
+    
     return {
         "status": "ok",
         "message": "FounderGPT API is running",
@@ -167,10 +176,28 @@ class Token(BaseModel):
 USER_VECTORSTORES = {}
 USER_QA_CHAINS = {}
 
+# Lazy database initialization flag
+_db_initialized = False
+
+def ensure_db_initialized():
+    """Lazy database initialization - called on first request."""
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            init_db()
+            _db_initialized = True
+            print("Database initialized on first request")
+        except Exception as e:
+            print(f"Warning: Database initialization error: {e}")
+            # Continue anyway - some operations might still work
+
 # Authentication Endpoints
 @app.post("/register", response_model=dict)
 async def register(user_data: UserRegister, db: Optional[Session] = Depends(get_db)):
     """Register a new user."""
+    # Lazy database initialization
+    ensure_db_initialized()
+    
     use_supabase = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY"))
     
     if use_supabase:
@@ -201,6 +228,9 @@ async def register(user_data: UserRegister, db: Optional[Session] = Depends(get_
 @app.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Optional[Session] = Depends(get_db)):
     """Login and get access token."""
+    # Lazy database initialization
+    ensure_db_initialized()
+    
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail="Incorrect username or password")
