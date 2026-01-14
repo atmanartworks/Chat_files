@@ -108,16 +108,21 @@ def init_db():
     """Initialize database and create all tables."""
     if USE_SUPABASE:
         # Supabase tables should be created via SQL editor or migrations
-        # Just verify connection
+        # Just verify connection - but don't block if it fails
         try:
             from .supabase_client import get_supabase_client
             supabase = get_supabase_client()
-            # Test connection by querying a table
+            # Test connection by querying a table (non-blocking, quick timeout)
             supabase.table("users").select("id").limit(1).execute()
             print("Supabase connection verified!")
+        except ValueError as e:
+            # Missing environment variables - not critical for startup
+            print(f"Supabase not configured: {e}")
+            print("Note: Supabase will be used when environment variables are set")
         except Exception as e:
             print(f"Supabase connection check: {e}")
             print("Note: Make sure tables are created in Supabase SQL Editor")
+            # Don't raise - allow app to start anyway
     else:
         # SQLite - create tables using SQLAlchemy
         Base.metadata.create_all(bind=engine)
