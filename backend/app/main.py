@@ -56,7 +56,7 @@ app = FastAPI(title="FounderGPT API", version="1.0.0")
 # Initialize database on startup - make it non-blocking
 @app.on_event("startup")
 async def startup_event():
-    """Startup event - all errors are caught to prevent app crash."""
+    """Startup event - all errors are caught to prevent app crash. Non-blocking for fast port binding."""
     print("=" * 50)
     print("FounderGPT API Starting...")
     print("=" * 50)
@@ -71,101 +71,112 @@ async def startup_event():
         traceback.print_exc()
         # Continue anyway - app can still start
     
-    # Load vectorstores from Qdrant Cloud
-    # Wrap entire section in try-except to prevent app crash
-    try:
-        from .vectorstore import load_vectorstore
-        from .db_helper import is_using_supabase
-        
-        use_supabase = is_using_supabase()
-        user_ids = []
-        
-        # Get user IDs - handle errors gracefully
+    # IMPORTANT: Don't block startup with vectorstore loading
+    # Load vectorstores in background to allow port binding immediately
+    # Use asyncio.create_task to run in background
+    import asyncio
+    
+    async def load_vectorstores_background():
+        """Load vectorstores in background without blocking startup."""
         try:
-            if use_supabase:
-                # Get all users with processed documents from Supabase
-                try:
-                    from .supabase_client import get_supabase_client
-                    supabase = get_supabase_client()
-                    result = supabase.table("documents").select("user_id").eq("processed", True).execute()
-                    user_ids = list(set([doc["user_id"] for doc in result.data if result.data]))
-                    print(f"Found {len(user_ids)} users with processed documents in Supabase")
-                except ValueError as e:
-                    print(f"Warning: Supabase client initialization failed: {e}")
-                    print("Continuing without loading vectorstores - app will still start")
-                    user_ids = []
-                except Exception as e:
-                    print(f"Warning: Error connecting to Supabase: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    user_ids = []
-            else:
-                # Get from SQLite
-                try:
-                    from .database import SessionLocal
-                    db = SessionLocal()
+            from .vectorstore import load_vectorstore
+            from .db_helper import is_using_supabase
+            
+            use_supabase = is_using_supabase()
+            user_ids = []
+            
+            # Get user IDs - handle errors gracefully
+            try:
+                if use_supabase:
+                    # Get all users with processed documents from Supabase
                     try:
-                        users_with_docs = db.query(Document.user_id).filter(Document.processed == True).distinct().all()
-                        user_ids = [user_id for (user_id,) in users_with_docs]
-                        print(f"Found {len(user_ids)} users with processed documents in SQLite")
-                    finally:
-                        db.close()
+                        from .supabase_client import get_supabase_client
+                        supabase = get_supabase_client()
+                        result = supabase.table("documents").select("user_id").eq("processed", True).execute()
+                        user_ids = list(set([doc["user_id"] for doc in result.data if result.data]))
+                        print(f"Found {len(user_ids)} users with processed documents in Supabase")
+                    except ValueError as e:
+                        print(f"Warning: Supabase client initialization failed: {e}")
+                        print("Continuing without loading vectorstores - app will still start")
+                        user_ids = []
+                    except Exception as e:
+                        print(f"Warning: Error connecting to Supabase: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        user_ids = []
+                else:
+                    # Get from SQLite
+                    try:
+                        from .database import SessionLocal
+                        db = SessionLocal()
+                        try:
+                            users_with_docs = db.query(Document.user_id).filter(Document.processed == True).distinct().all()
+                            user_ids = [user_id for (user_id,) in users_with_docs]
+                            print(f"Found {len(user_ids)} users with processed documents in SQLite")
+                        finally:
+                            db.close()
+                    except Exception as e:
+                        print(f"Warning: Error querying SQLite: {e}")
+                        user_ids = []
+            except Exception as e:
+                print(f"Warning: Error getting user IDs: {e}")
+                import traceback
+                traceback.print_exc()
+                user_ids = []
+            
+            # Load vectorstores for each user - handle errors per user
+            for user_id in user_ids:
+                try:
+                    # Try to load from Qdrant Cloud first
+                    vectorstore = load_vectorstore(user_id)
+                    if vectorstore:
+                        USER_VECTORSTORES[user_id] = vectorstore
+                        USER_QA_CHAINS[user_id] = get_qa_chain(USER_VECTORSTORES[user_id])
+                        print(f"Loaded vectorstore from Qdrant Cloud for user {user_id}")
+                    else:
+                        # If not found in Qdrant Cloud, rebuild from documents
+                        try:
+                            from .file_loader_helper import load_document_content
+                            from .db_helper import get_processed_documents
+                            user_docs = get_processed_documents(user_id, None)
+                            all_docs = []
+                            for doc in user_docs:
+                                try:
+                                    docs = load_document_content(doc)
+                                    all_docs.extend(docs)
+                                except Exception as e:
+                                    doc_name = doc.get("filename") if isinstance(doc, dict) else getattr(doc, 'filename', 'unknown')
+                                    print(f"Error loading document {doc_name} for user {user_id}: {e}")
+                            if all_docs:
+                                USER_VECTORSTORES[user_id] = create_vectorstore(all_docs, user_id)
+                                USER_QA_CHAINS[user_id] = get_qa_chain(USER_VECTORSTORES[user_id])
+                                # Save to Qdrant Cloud
+                                from .vectorstore import save_vectorstore
+                                save_vectorstore(USER_VECTORSTORES[user_id], user_id)
+                                print(f"Rebuilt and saved vectorstore to Qdrant Cloud for user {user_id} with {len(user_docs)} documents")
+                        except Exception as e:
+                            print(f"Warning: Error rebuilding vectorstore for user {user_id}: {e}")
+                            # Continue with next user
                 except Exception as e:
-                    print(f"Warning: Error querying SQLite: {e}")
-                    user_ids = []
+                    print(f"Warning: Error loading vectorstore for user {user_id}: {e}")
+                    # Continue with next user - don't crash the app
+                    continue
+        
+            print("Vectorstore loading completed in background")
         except Exception as e:
-            print(f"Warning: Error getting user IDs: {e}")
+            print(f"Warning: Error during background vectorstore loading: {e}")
             import traceback
             traceback.print_exc()
-            user_ids = []
-        
-        # Load vectorstores for each user - handle errors per user
-        for user_id in user_ids:
-            try:
-                # Try to load from Qdrant Cloud first
-                vectorstore = load_vectorstore(user_id)
-                if vectorstore:
-                    USER_VECTORSTORES[user_id] = vectorstore
-                    USER_QA_CHAINS[user_id] = get_qa_chain(USER_VECTORSTORES[user_id])
-                    print(f"Loaded vectorstore from Qdrant Cloud for user {user_id}")
-                else:
-                    # If not found in Qdrant Cloud, rebuild from documents
-                    try:
-                        from .file_loader_helper import load_document_content
-                        from .db_helper import get_processed_documents
-                        user_docs = get_processed_documents(user_id, None)
-                        all_docs = []
-                        for doc in user_docs:
-                            try:
-                                docs = load_document_content(doc)
-                                all_docs.extend(docs)
-                            except Exception as e:
-                                doc_name = doc.get("filename") if isinstance(doc, dict) else getattr(doc, 'filename', 'unknown')
-                                print(f"Error loading document {doc_name} for user {user_id}: {e}")
-                        if all_docs:
-                            USER_VECTORSTORES[user_id] = create_vectorstore(all_docs, user_id)
-                            USER_QA_CHAINS[user_id] = get_qa_chain(USER_VECTORSTORES[user_id])
-                            # Save to Qdrant Cloud
-                            from .vectorstore import save_vectorstore
-                            save_vectorstore(USER_VECTORSTORES[user_id], user_id)
-                            print(f"Rebuilt and saved vectorstore to Qdrant Cloud for user {user_id} with {len(user_docs)} documents")
-                    except Exception as e:
-                        print(f"Warning: Error rebuilding vectorstore for user {user_id}: {e}")
-                        # Continue with next user
-            except Exception as e:
-                print(f"Warning: Error loading vectorstore for user {user_id}: {e}")
-                # Continue with next user - don't crash the app
-                continue
-        
-        print("Startup completed - application ready to accept requests")
-    except Exception as e:
-        print(f"Warning: Error during startup (vectorstore loading): {e}")
-        import traceback
-        traceback.print_exc()
-        print("Application will continue to start - vectorstores can be loaded on demand")
+            print("Application will continue - vectorstores can be loaded on demand")
     
+    # Start vectorstore loading in background (non-blocking)
+    # This allows the app to bind to port immediately
+    asyncio.create_task(load_vectorstores_background())
+    
+    # Print ready message immediately - don't wait for vectorstores
     print("=" * 50)
     print("FounderGPT API Ready - Port binding should succeed now")
+    print("Vectorstores loading in background...")
     print("=" * 50)
 
 # Add CORS middleware - Allow all localhost origins for development and production
