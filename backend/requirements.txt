@@ -28,10 +28,9 @@ supabase
 python-jose[cryptography]
 passlib[bcrypt]
 
-# Qdrant Cloud (required if using Qdrant Cloud - lightweight HTTP client)
-qdrant-client
-
-# Optional: langchain-qdrant (has fallback to langchain-community if not installed)
+# Optional: Qdrant Cloud (only if using Qdrant Cloud)
+# Uncomment if using Qdrant Cloud for vectorstore
+# qdrant-client
 # langchain-qdrant
 
 # REMOVED for Render Free Tier (causes slow startup):
