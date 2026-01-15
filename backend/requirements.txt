@@ -1,42 +1,22 @@
-# Core FastAPI dependencies
 fastapi
-uvicorn[standard]
+uvicorn
 python-multipart
-
-# LangChain core
 langchain
 langchain-community
 langchain-groq
 langchain-huggingface
-# Required by langchain-huggingface for embeddings
-sentence-transformers
-
-# Document processing (lightweight)
+langchain-ollama
+langchain-qdrant
+qdrant-client
 pypdf
 python-docx
-
-# Environment & Config
+sentence-transformers
+ollama
 python-dotenv
-
-# PDF Generation
 reportlab
-
-# Database
 sqlalchemy
 psycopg2-binary
 supabase
-
-# Authentication
+werkzeug
 python-jose[cryptography]
 passlib[bcrypt]
-
-# Optional: Qdrant Cloud (only if using Qdrant Cloud)
-# Uncomment if using Qdrant Cloud for vectorstore
-# qdrant-client
-# langchain-qdrant
-
-# REMOVED for Render Free Tier (causes slow startup):
-# - sentence-transformers (included in langchain-huggingface)
-# - langchain-ollama (local only, not for Render)
-# - ollama (local only, not for Render)
-# - werkzeug (not needed for FastAPI)

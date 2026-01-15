@@ -1,52 +1,29 @@
 from langchain_huggingface import HuggingFaceEmbeddings  # type: ignore
+try:
+    from langchain_qdrant import QdrantVectorStore  # type: ignore
+    # Use Qdrant as alias for backward compatibility
+    Qdrant = QdrantVectorStore
+    USING_NEW_QDRANT = True
+except ImportError:
+    # Fallback to deprecated version
+    from langchain_community.vectorstores import Qdrant  # type: ignore
+    USING_NEW_QDRANT = False
+    print("Warning: Using deprecated langchain_community.vectorstores.Qdrant. Install langchain-qdrant for better compatibility.")
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from qdrant_client import QdrantClient  # type: ignore
+from qdrant_client.http import models  # type: ignore
 import os
 from dotenv import load_dotenv  # type: ignore
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Optional Qdrant imports (only if using Qdrant Cloud)
-QDRANT_AVAILABLE = False
-Qdrant = None
-QdrantClient = None
-try:
-    from qdrant_client import QdrantClient  # type: ignore
-    from qdrant_client.http import models  # type: ignore
-    try:
-        from langchain_qdrant import QdrantVectorStore  # type: ignore
-        Qdrant = QdrantVectorStore
-        USING_NEW_QDRANT = True
-    except ImportError:
-        # Fallback to deprecated version
-        from langchain_community.vectorstores import Qdrant  # type: ignore
-        USING_NEW_QDRANT = False
-        print("Note: Using langchain_community.vectorstores.Qdrant (langchain-qdrant not installed)")
-    QDRANT_AVAILABLE = True
-except ImportError:
-    print("Note: Qdrant not available. Install qdrant-client and langchain-qdrant if using Qdrant Cloud.")
-
-# Lazy initialization of embeddings (only load when needed, not at import time)
-_embeddings = None
-
-def get_embeddings():
-    """Get embeddings instance (lazy initialization to avoid blocking startup)."""
-    global _embeddings
-    if _embeddings is None:
-        try:
-            _embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},  # Faster on CPU for small models
-                encode_kwargs={'normalize_embeddings': False}  # Skip normalization for speed
-            )
-            print("✅ Embeddings initialized (lazy load)")
-        except Exception as e:
-            print(f"❌ Error initializing embeddings: {e}")
-            raise
-    return _embeddings
-
-# For backward compatibility, create embeddings on first use
-embeddings = None  # Will be initialized lazily
+# Use fast, lightweight embeddings
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    model_kwargs={'device': 'cpu'},  # Faster on CPU for small models
+    encode_kwargs={'normalize_embeddings': False}  # Skip normalization for speed
+)
 
 # Qdrant Cloud Configuration
 QDRANT_URL = os.getenv("QDRANT_URL", "")  # Your Qdrant Cloud URL
@@ -60,12 +37,6 @@ else:
 
 def get_qdrant_client():
     """Get Qdrant client (cloud or local)."""
-    if not QDRANT_AVAILABLE:
-        raise RuntimeError(
-            "Qdrant is not available. Install qdrant-client package. "
-            "Or set QDRANT_URL and QDRANT_API_KEY to use Qdrant Cloud."
-        )
-    
     if QDRANT_URL and QDRANT_API_KEY:
         # Use Qdrant Cloud
         return QdrantClient(
@@ -112,12 +83,6 @@ def create_vectorstore(docs, user_id: int):
                     break
     
     # Create Qdrant vectorstore
-    if not QDRANT_AVAILABLE or Qdrant is None:
-        raise RuntimeError(
-            "Qdrant is required for vectorstore. Please install qdrant-client and langchain-qdrant packages, "
-            "or set QDRANT_URL and QDRANT_API_KEY to use Qdrant Cloud."
-        )
-    
     collection_name = get_collection_name(user_id)
     client = get_qdrant_client()
     
@@ -132,8 +97,7 @@ def create_vectorstore(docs, user_id: int):
             from qdrant_client.http import models as rest
             # Get embedding dimension (all-MiniLM-L6-v2 has 384 dimensions)
             # Test with first document to get embedding size
-            embeddings_instance = get_embeddings()
-            test_embedding = embeddings_instance.embed_query("test")
+            test_embedding = embeddings.embed_query("test")
             vector_size = len(test_embedding)
             
             try:
@@ -151,8 +115,7 @@ def create_vectorstore(docs, user_id: int):
                     print(f"Warning: Error creating collection (might already exist): {e}")
         
         # Create Qdrant instance with existing client
-        embeddings_instance = get_embeddings()
-        vectorstore = Qdrant(client, collection_name, embeddings_instance)
+        vectorstore = Qdrant(client, collection_name, embeddings)
         
         # Add documents to the vectorstore
         vectorstore.add_documents(split_docs)
@@ -179,11 +142,10 @@ def load_vectorstore(user_id: int):
             if collection_exists:
                 # Load existing collection
                 # Qdrant __init__ takes positional args: (client, collection_name, embeddings)
-                embeddings_instance = get_embeddings()
                 vectorstore = Qdrant(
                     client,
                     collection_name,
-                    embeddings_instance,
+                    embeddings,
                 )
                 print(f"Loaded Qdrant vectorstore for user {user_id} from collection: {collection_name}")
                 return vectorstore
