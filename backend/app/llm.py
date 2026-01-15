@@ -1,9 +1,16 @@
 from langchain_groq import ChatGroq  # type: ignore
-from langchain_ollama import OllamaLLM  # type: ignore
 import os
 
+# Optional Ollama import (only for local development)
+try:
+    from langchain_ollama import OllamaLLM  # type: ignore
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    print("Note: Ollama not available (optional - only for local development)")
+
 def get_llm():
-    # Try Groq first if API key is available (fastest option)
+    # Try Groq first if API key is available (fastest option - works on Render)
     groq_api_key = os.getenv("GROQ_API_KEY")
     if groq_api_key:
         try:
@@ -16,7 +23,13 @@ def get_llm():
         except Exception as e:
             print(f"Warning: Failed to initialize Groq LLM: {e}")
     
-    # Fallback to Ollama if Groq is not available
+    # Fallback to Ollama if Groq is not available AND Ollama is installed
+    if not OLLAMA_AVAILABLE:
+        raise RuntimeError(
+            "GROQ_API_KEY is required. Please set GROQ_API_KEY environment variable. "
+            "Ollama is not available (optional package for local development only)."
+        )
+    
     # Try fastest models first
     ollama_models = ["phi3:mini", "llama3", "llama2", "mistral", "phi3", "gemma"]
     

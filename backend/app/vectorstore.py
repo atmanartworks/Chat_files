@@ -1,24 +1,32 @@
 from langchain_huggingface import HuggingFaceEmbeddings  # type: ignore
-try:
-    from langchain_qdrant import QdrantVectorStore  # type: ignore
-    # Use Qdrant as alias for backward compatibility
-    Qdrant = QdrantVectorStore
-    USING_NEW_QDRANT = True
-except ImportError:
-    # Fallback to deprecated version
-    from langchain_community.vectorstores import Qdrant  # type: ignore
-    USING_NEW_QDRANT = False
-    print("Warning: Using deprecated langchain_community.vectorstores.Qdrant. Install langchain-qdrant for better compatibility.")
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from qdrant_client import QdrantClient  # type: ignore
-from qdrant_client.http import models  # type: ignore
 import os
 from dotenv import load_dotenv  # type: ignore
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Use fast, lightweight embeddings
+# Optional Qdrant imports (only if using Qdrant Cloud)
+QDRANT_AVAILABLE = False
+Qdrant = None
+QdrantClient = None
+try:
+    from qdrant_client import QdrantClient  # type: ignore
+    from qdrant_client.http import models  # type: ignore
+    try:
+        from langchain_qdrant import QdrantVectorStore  # type: ignore
+        Qdrant = QdrantVectorStore
+        USING_NEW_QDRANT = True
+    except ImportError:
+        # Fallback to deprecated version
+        from langchain_community.vectorstores import Qdrant  # type: ignore
+        USING_NEW_QDRANT = False
+        print("Note: Using langchain_community.vectorstores.Qdrant (langchain-qdrant not installed)")
+    QDRANT_AVAILABLE = True
+except ImportError:
+    print("Note: Qdrant not available. Install qdrant-client and langchain-qdrant if using Qdrant Cloud.")
+
+# Use fast, lightweight embeddings (langchain-huggingface handles this efficiently)
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2",
     model_kwargs={'device': 'cpu'},  # Faster on CPU for small models
@@ -37,6 +45,12 @@ else:
 
 def get_qdrant_client():
     """Get Qdrant client (cloud or local)."""
+    if not QDRANT_AVAILABLE:
+        raise RuntimeError(
+            "Qdrant is not available. Install qdrant-client package. "
+            "Or set QDRANT_URL and QDRANT_API_KEY to use Qdrant Cloud."
+        )
+    
     if QDRANT_URL and QDRANT_API_KEY:
         # Use Qdrant Cloud
         return QdrantClient(
@@ -83,6 +97,12 @@ def create_vectorstore(docs, user_id: int):
                     break
     
     # Create Qdrant vectorstore
+    if not QDRANT_AVAILABLE or Qdrant is None:
+        raise RuntimeError(
+            "Qdrant is required for vectorstore. Please install qdrant-client and langchain-qdrant packages, "
+            "or set QDRANT_URL and QDRANT_API_KEY to use Qdrant Cloud."
+        )
+    
     collection_name = get_collection_name(user_id)
     client = get_qdrant_client()
     
