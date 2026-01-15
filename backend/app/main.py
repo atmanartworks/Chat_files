@@ -8,25 +8,37 @@ import os
 import json
 import asyncio
 import re
+import sys
 from typing import AsyncIterator, List, Optional
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-from .loaders import load_file
-from .vectorstore import create_vectorstore
-from .rag import get_qa_chain
-from .generator import get_direct_generation_chain
-from .pdf_generator import generate_pdf_from_text
-from .database import init_db, get_db, ChatHistory, Document, KeywordSearch, User
-from .auth import (
-    get_current_user, authenticate_user, get_password_hash,
-    create_access_token, get_user_by_username, get_user_by_email
-)
-from fastapi.security import OAuth2PasswordRequestForm  # type: ignore
-from .keyword_search import search_keyword_in_document, search_multiple_keywords
-from .citations import extract_citations, format_citations_inline, get_citation_references
+# Import with error handling to prevent silent failures
+try:
+    from .loaders import load_file
+    from .vectorstore import create_vectorstore
+    from .rag import get_qa_chain
+    from .generator import get_direct_generation_chain
+    from .pdf_generator import generate_pdf_from_text
+    from .database import init_db, get_db, ChatHistory, Document, KeywordSearch, User
+    from .auth import (
+        get_current_user, authenticate_user, get_password_hash,
+        create_access_token, get_user_by_username, get_user_by_email
+    )
+    from fastapi.security import OAuth2PasswordRequestForm  # type: ignore
+    from .keyword_search import search_keyword_in_document, search_multiple_keywords
+    from .citations import extract_citations, format_citations_inline, get_citation_references
+    print("✅ All modules imported successfully")
+    sys.stdout.flush()
+except Exception as e:
+    print(f"❌ Error importing modules: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.stdout.flush()
+    # Re-raise to prevent silent failures
+    raise
 
 # Helper function to format keyword search response
 def format_keyword_search_response(search_result: dict, keyword: str) -> str:
