@@ -94,6 +94,19 @@ async def startup_event():
         import sys
         sys.stdout.flush()
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown event - clean shutdown handler."""
+    try:
+        print("=" * 50)
+        print("FounderGPT API Shutting down...")
+        print("=" * 50)
+        import sys
+        sys.stdout.flush()
+    except Exception:
+        # Ignore errors during shutdown
+        pass
+
 # Add CORS middleware - Allow all localhost origins for development and production
 # Update allow_origins with your frontend URL after deployment
 app.add_middleware(
