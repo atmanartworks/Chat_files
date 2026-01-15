@@ -1,0 +1,138 @@
+.file-upload-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+}
+
+.file-upload-card {
+  background: white;
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  width: 100%;
+  text-align: center;
+}
+
+.upload-icon {
+  color: #6366f1;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.file-upload-card h2 {
+  margin: 0 0 0.5rem 0;
+  color: #1f2937;
+  font-size: 1.5rem;
+}
+
+.upload-description {
+  color: #6b7280;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+}
+
+.file-input-wrapper {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.file-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.file-input-label {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: #f3f4f6;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #374151;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.file-input-label:hover {
+  background: #e5e7eb;
+  border-color: #6366f1;
+}
+
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #1f2937;
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.upload-button {
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.upload-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.upload-status {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.upload-status.success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.upload-status.error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.upload-status.info {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
