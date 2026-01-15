@@ -3,11 +3,13 @@ fastapi
 uvicorn[standard]
 python-multipart
 
-# LangChain core (lightweight)
+# LangChain core
 langchain
 langchain-community
 langchain-groq
 langchain-huggingface
+# Required by langchain-huggingface for embeddings
+sentence-transformers
 
 # Document processing (lightweight)
 pypdf

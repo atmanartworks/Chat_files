@@ -26,12 +26,27 @@ try:
 except ImportError:
     print("Note: Qdrant not available. Install qdrant-client and langchain-qdrant if using Qdrant Cloud.")
 
-# Use fast, lightweight embeddings (langchain-huggingface handles this efficiently)
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={'device': 'cpu'},  # Faster on CPU for small models
-    encode_kwargs={'normalize_embeddings': False}  # Skip normalization for speed
-)
+# Lazy initialization of embeddings (only load when needed, not at import time)
+_embeddings = None
+
+def get_embeddings():
+    """Get embeddings instance (lazy initialization to avoid blocking startup)."""
+    global _embeddings
+    if _embeddings is None:
+        try:
+            _embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'},  # Faster on CPU for small models
+                encode_kwargs={'normalize_embeddings': False}  # Skip normalization for speed
+            )
+            print("✅ Embeddings initialized (lazy load)")
+        except Exception as e:
+            print(f"❌ Error initializing embeddings: {e}")
+            raise
+    return _embeddings
+
+# For backward compatibility, create embeddings on first use
+embeddings = None  # Will be initialized lazily
 
 # Qdrant Cloud Configuration
 QDRANT_URL = os.getenv("QDRANT_URL", "")  # Your Qdrant Cloud URL
@@ -117,7 +132,8 @@ def create_vectorstore(docs, user_id: int):
             from qdrant_client.http import models as rest
             # Get embedding dimension (all-MiniLM-L6-v2 has 384 dimensions)
             # Test with first document to get embedding size
-            test_embedding = embeddings.embed_query("test")
+            embeddings_instance = get_embeddings()
+            test_embedding = embeddings_instance.embed_query("test")
             vector_size = len(test_embedding)
             
             try:
@@ -135,7 +151,8 @@ def create_vectorstore(docs, user_id: int):
                     print(f"Warning: Error creating collection (might already exist): {e}")
         
         # Create Qdrant instance with existing client
-        vectorstore = Qdrant(client, collection_name, embeddings)
+        embeddings_instance = get_embeddings()
+        vectorstore = Qdrant(client, collection_name, embeddings_instance)
         
         # Add documents to the vectorstore
         vectorstore.add_documents(split_docs)
@@ -162,10 +179,11 @@ def load_vectorstore(user_id: int):
             if collection_exists:
                 # Load existing collection
                 # Qdrant __init__ takes positional args: (client, collection_name, embeddings)
+                embeddings_instance = get_embeddings()
                 vectorstore = Qdrant(
                     client,
                     collection_name,
-                    embeddings,
+                    embeddings_instance,
                 )
                 print(f"Loaded Qdrant vectorstore for user {user_id} from collection: {collection_name}")
                 return vectorstore
